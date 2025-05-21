@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Archery Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      display: block;
+      background: #87CEEB;
+    }
+    #hamburger, #pauseButton {
+      position: fixed;
+      bottom: 10px;
+      font-size: 24px;
+      color: white;
+      background: rgba(0, 0, 0, 0.6);
+      border: none;
+      padding: 8px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 1001;
+    }
+    #hamburger { left: 10px; }
+    #pauseButton { left: 60px; }
+
+    #scoreboard {
+      position: absolute;
+      top: 10px;
+      left: 60px;
+      font-size: 20px;
+      color: white;
+      font-weight: bold;
+      text-shadow: 1px 1px 2px black;
+      z-index: 1000;
+      user-select: none;
+    }
+
+    #gameOver {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 36px;
+      color: red;
+      font-weight: bold;
+      display: none;
+      text-align: center;
+      z-index: 1000;
+    }
+    #gameOver button {
+      margin-top: 20px;
+      font-size: 20px;
+      padding: 10px 20px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      background-color: #28a745;
+      color: white;
+    }
+
+    #sidebar {
+      position: fixed;
+      bottom: -100%;
+      left: 0;
+      width: 100%;
+      height: 50%;
+      background-color: #222;
+      color: white;
+      padding: 20px;
+      transition: bottom 0.3s ease;
+      z-index: 1000;
+    }
+
+    #sidebar h2 {
+      margin-top: 0;
+      color: #00ff99;
+    }
+
+    #sidebar p {
+      font-size: 14px;
+    }
+
+    #closeSidebar {
+      background: red;
+      border: none;
+      color: white;
+      font-size: 18px;
+      padding: 5px 10px;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    #howToPlay {
+      position: fixed;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      font-size: 18px;
+      z-index: 1002;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <button id="hamburger">☰</button>
+  <button id="pauseButton">⏸ Pause</button>
+  <div id="scoreboard">
+    Score: 0<br />
+    Highest: 0<br />
+    Level: 0
+  </div>
+  <div id="gameOver">
+    Game Over<br />
+    <button id="tryAgainBtn">Try Again</button>
+  </div>
+  <div id="howToPlay">Click anywhere to shoot arrows! Hit red targets to score. Hit special colored targets to get more points!</div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="sidebar">
+    <button id="closeSidebar">X</button>
+    <h2>Developer: Aniket Pandey</h2>
+    <h3>About</h3>
+    <p>This is a fun archery game where you shoot arrows at moving targets. Pop the special targets for bonus points!</p>
+    <h3>Terms and Conditions</h3>
+    <p>This game is for entertainment only. No data is collected or saved.</p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let arrows = [], targets = [];
+    let score = 0, highScore = 0, level = 0;
+    let isPaused = false, isGameOver = false;
+
+    const scoreboard = document.getElementById("scoreboard");
+    const pauseBtn = document.getElementById("pauseButton");
+
+    const redHitSound = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
+    const specialPopSound = new Audio("https://actions.google.com/sounds/v1/cartoon/pop.ogg");
+    const levelUpSound = new Audio("https://actions.google.com/sounds/v1/cartoon/concussive_hit_guitar_boing.ogg");
+    const gameOverSound = new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg");
+
+    function updateScoreboard() {
+      scoreboard.innerHTML = `Score: ${score}<br />Highest: ${highScore}<br />Level: ${level}`;
+    }
+
+    function shootArrow(y) {
+      if (!isGameOver && !isPaused) {
+        arrows.push({ x: 100, y, speed: 10 });
+      }
+    }
+
+    function spawnTarget() {
+      if (isPaused || isGameOver) return;
+      let y = Math.random() * (canvas.height - 100) + 50;
+      let special = Math.random() < 0.1;
+      targets.push({ x: canvas.width, y, radius: 30, special });
+    }
+
+    function drawTargets() {
+      targets.forEach(t => {
+        ctx.fillStyle = t.special ? "gold" : "red";
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawArrows() {
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 2;
+      arrows.forEach(a => {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(a.x + 20, a.y);
+        ctx.stroke();
+      });
+    }
+
+    function checkCollisions() {
+      arrows.forEach((a, i) => {
+        targets.forEach((t, j) => {
+          let dx = (a.x + 20) - t.x;
+          let dy = a.y - t.y;
+          let dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < t.radius) {
+            if (t.special) {
+              score += 40;
+              specialPopSound.play();
+            } else {
+              score += 10;
+              redHitSound.play();
+            }
+
+            if (score > highScore) highScore = score;
+
+            let newLevel = Math.floor(score / 200);
+            if (newLevel > level) {
+              level = newLevel;
+              levelUpSound.play();
+            }
+
+            updateScoreboard();
+            arrows.splice(i, 1);
+            targets.splice(j, 1);
+          }
+        });
+      });
+    }
+
+    function checkGameOver() {
+      for (let t of targets) {
+        if (t.x - t.radius <= 0) {
+          isGameOver = true;
+          gameOverSound.play();
+          document.getElementById("gameOver").style.display = "block";
+          clearInterval(spawnInterval);
+        }
+      }
+    }
+
+    function gameLoop() {
+      if (isPaused || isGameOver) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawTargets();
+      drawArrows();
+
+      arrows.forEach(a => a.x += a.speed);
+      targets.forEach(t => t.x -= (3 + level));
+
+      checkCollisions();
+      checkGameOver();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    canvas.addEventListener("click", e => shootArrow(e.clientY));
+
+    let spawnInterval = setInterval(spawnTarget, 1500);
+    updateScoreboard();
+    gameLoop();
+
+    document.getElementById("hamburger").onclick = () => {
+      document.getElementById("sidebar").style.bottom = "0";
+    };
+    document.getElementById("closeSidebar").onclick = () => {
+      document.getElementById("sidebar").style.bottom = "-100%";
+    };
+
+    document.getElementById("tryAgainBtn").onclick = () => {
+      arrows = [];
+      targets = [];
+      score = 0;
+      level = 0;
+      isGameOver = false;
+      updateScoreboard();
+      document.getElementById("gameOver").style.display = "none";
+      spawnInterval = setInterval(spawnTarget, 1500);
+      gameLoop();
+    };
+
+    pauseBtn.onclick = () => {
+      isPaused = !isPaused;
+      pauseBtn.textContent = isPaused ? "▶ Resume" : "⏸ Pause";
+      if (!isPaused) gameLoop();
+    };
+
+    setTimeout(() => {
+      const info = document.getElementById("howToPlay");
+      info.style.display = "block";
+      setTimeout(() => info.style.display = "none", 6000);
+    }, 500);
+
+    window.addEventListener("resize", () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+  </script>
+</body>
+</html>
