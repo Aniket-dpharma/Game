@@ -170,6 +170,30 @@
         left: 15px;
       }
     }
+
+    /* Level Up Overlay */
+    #levelUpOverlay {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.7);
+      color: #ffd700;
+      font-size: 8vh;
+      font-weight: 900;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-shadow: 0 0 15px #ff0;
+      z-index: 2000;
+      user-select: none;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    #levelUpOverlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
@@ -180,6 +204,9 @@
     <div class="scoreboard-box" role="status">Level<br><span id="levelValue">0</span></div>
     <div class="scoreboard-box" role="status">High Score<br><span id="highScoreValue">0</span></div>
   </div>
+
+  <!-- Level Up overlay -->
+  <div id="levelUpOverlay" aria-live="polite" aria-atomic="true">Level Up!</div>
 
   <!-- Game Over modal -->
   <div id="gameOver" role="alert" aria-live="assertive" aria-atomic="true">
@@ -211,12 +238,14 @@
     let isGameOver = false;
     let baseSpeed = 3;
     let speed = baseSpeed;
+    let isLevelUpActive = false;
 
     const scoreValue = document.getElementById("scoreValue");
     const levelValue = document.getElementById("levelValue");
     const highScoreValue = document.getElementById("highScoreValue");
     const gameOverDisplay = document.getElementById("gameOver");
     const pauseButton = document.getElementById("pauseButton");
+    const levelUpOverlay = document.getElementById("levelUpOverlay");
 
     // Audio context and sound functions
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -270,6 +299,12 @@
       }
     }
 
+    function playLevelUpSound() {
+      // simple two-tone ascending beep
+      playSound(700, 0.15, 'square', 0.3);
+      setTimeout(() => playSound(900, 0.15, 'square', 0.3), 200);
+    }
+
     function drawBall(ball) {
       let gradient = ctx.createRadialGradient(
         ball.x - ball.radius / 3,
@@ -295,13 +330,13 @@
     }
 
     function shootArrow(y) {
-      if (!isPaused && !isGameOver) {
+      if (!isPaused && !isGameOver && !isLevelUpActive) {
         // Resume audio context if suspended (required by some browsers)
         if (audioCtx.state === 'suspended') {
           audioCtx.resume();
         }
         playShootSound();
-        arrows.push({ x: 50, y: y, length: 40 });
+        arrows.push({ x: -40, y: y, length: 40 }); // Arrow starts just behind left screen edge
       }
     }
 
@@ -331,7 +366,7 @@
     }
 
     function updateGame() {
-      if (isPaused || isGameOver) return;
+      if (isPaused || isGameOver || isLevelUpActive) return;
 
       ctx.clearRect(0, 0, w, h);
 
@@ -370,8 +405,7 @@
 
       let newLevel = Math.floor(score / 200);
       if (newLevel > level) {
-        level = newLevel;
-        updateUI();
+        triggerLevelUp(newLevel);
       }
 
       requestAnimationFrame(updateGame);
@@ -404,25 +438,45 @@
       level = 0;
       arrows = [];
       balls = [];
+      speed = baseSpeed;
+      updateUI();
       gameOverDisplay.style.display = "none";
       pauseButton.setAttribute('aria-pressed', 'false');
-      updateUI();
-      updateGame();
+      spawnBall();
+      if (!isPaused) {
+        requestAnimationFrame(updateGame);
+      }
     }
 
-    canvas.addEventListener("click", e => shootArrow(e.clientY));
+    function togglePause() {
+      if (isGameOver || isLevelUpActive) return;
 
-    setInterval(() => {
-      if (!isPaused && !isGameOver) spawnBall();
-    }, 1000);
-
-    pauseButton.addEventListener("click", () => {
       isPaused = !isPaused;
-      pauseButton.textContent = isPaused ? "▶ Resume" : "⏸ Pause";
+      pauseButton.textContent = isPaused ? "▶️ Resume" : "⏸ Pause";
       pauseButton.setAttribute('aria-pressed', isPaused.toString());
-      if (!isPaused && !isGameOver) updateGame();
-    });
 
+      if (!isPaused) {
+        requestAnimationFrame(updateGame);
+      }
+    }
+
+    // Level-up transition with overlay and pause
+    function triggerLevelUp(newLevel) {
+      level = newLevel;
+      isLevelUpActive = true;
+      levelUpOverlay.classList.add("show");
+      playLevelUpSound();
+
+      // Pause the game for 1.5 seconds during level-up display
+      setTimeout(() => {
+        levelUpOverlay.classList.remove("show");
+        isLevelUpActive = false;
+        updateUI();
+        requestAnimationFrame(updateGame);
+      }, 1500);
+    }
+
+    // Handle resizing
     window.addEventListener("resize", () => {
       w = window.innerWidth;
       h = window.innerHeight;
@@ -430,8 +484,29 @@
       canvas.height = h;
     });
 
-    updateGame();
-  </script>
+    // Shoot arrow on click or touch
+    canvas.addEventListener("mousedown", e => {
+      shootArrow(e.clientY);
+    });
 
+    canvas.addEventListener("touchstart", e => {
+      shootArrow(e.touches[0].clientY);
+    });
+
+    // Pause button click
+    pauseButton.addEventListener("click", () => {
+      togglePause();
+    });
+
+    // Spawn balls at intervals
+    setInterval(() => {
+      if (!isPaused && !isGameOver && !isLevelUpActive) {
+        spawnBall();
+      }
+    }, 1200);
+
+    // Start the game
+    restartGame();
+  </script>
 </body>
 </html>
